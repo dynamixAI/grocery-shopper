@@ -144,21 +144,11 @@ def generate_mock_product_results(items: list[str], confirmed_stores: list[dict]
 
 
 def render_progress() -> None:
-    step_names = {
-        1: "Items",
-        2: "Location & Budget",
-        3: "Stores",
-        4: "Compare",
-        5: "Basket",
-        6: "Shopping List"
-    }
-
-    st.markdown(f"### Step {st.session_state.step} of 6: {step_names[st.session_state.step]}")
     st.progress(st.session_state.step / 6)
 
 
 def step_1_items() -> None:
-    st.markdown("## Step 1 — Add Shopping Items")
+    st.markdown("## Add Shopping Items")
 
     st.text_input(
         "Type one item and press Enter",
@@ -208,7 +198,7 @@ def step_1_items() -> None:
 
 
 def step_2_location_budget() -> None:
-    st.markdown("## Step 2 — Enter Location and Budget")
+    st.markdown("## Location and Budget")
 
     location_input = st.text_input(
         "Postcode or area",
@@ -251,7 +241,7 @@ def step_2_location_budget() -> None:
 
 
 def step_3_stores() -> None:
-    st.markdown("## Step 3 — Choose Store Brands and Confirm Nearby Branches")
+    st.markdown("## Stores")
 
     selected_store_brands = st.multiselect(
         "Choose store brands to search",
@@ -341,7 +331,7 @@ def step_3_stores() -> None:
 
 
 def step_4_compare() -> None:
-    st.markdown("## Step 4 — Compare Product Results")
+    st.markdown("## Compare Products")
 
     if not st.session_state.comparison_results:
         if st.button("Generate product comparison", type="primary"):
@@ -408,7 +398,7 @@ def step_4_compare() -> None:
 
 
 def step_5_basket() -> None:
-    st.markdown("## Step 5 — Final Basket")
+    st.markdown("## Final Basket")
 
     basket_rows = list(st.session_state.final_selections.values())
 
@@ -492,8 +482,8 @@ def step_5_basket() -> None:
 
 
 def step_6_shopping_list() -> None:
-    st.markdown("## Step 6 — Shopping List")
-    st.write("Use this checklist while shopping and tick items as you place them in your basket.")
+    st.markdown("## Shopping List")
+    st.write("Tick items as you place them in your basket.")
 
     basket_rows = list(st.session_state.final_selections.values())
 
@@ -513,11 +503,25 @@ def step_6_shopping_list() -> None:
             checkbox_key = f"basket_check_{wanted_item}"
             current_value = st.session_state.shopping_checklist.get(wanted_item, False)
 
-            checked = st.checkbox(
-                f"{wanted_item.title()} — {row['matched_product']} | {row['store_brand']} | £{row['price']:.2f}",
-                value=current_value,
-                key=checkbox_key
-            )
+            with st.container():
+                checked = st.checkbox(
+                    f"Pick {wanted_item.title()}",
+                    value=current_value,
+                    key=checkbox_key
+                )
+
+                st.markdown(
+                    f"""
+**Selected product:** {row['matched_product']}  
+**Store:** {row['store_brand']}  
+**Branch:** {row['branch']}  
+**Price:** £{row['price']:.2f}  
+**Pack size:** {row['pack_size']}  
+**Offer:** {row['offer']}
+"""
+                )
+
+                st.divider()
 
             st.session_state.shopping_checklist[wanted_item] = checked
 
