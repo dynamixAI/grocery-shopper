@@ -207,6 +207,22 @@ def step_2_location_budget() -> None:
         placeholder="e.g. WN1 3FG or Wigan"
     )
 
+    if st.button("Test location lookup"):
+        try:
+            result = geocode_location(location_input)
+
+            if result is None:
+                st.warning("No location match found.")
+            else:
+                st.success("Location found successfully.")
+                st.write(f"**Matched location:** {result['display_name']}")
+                st.write(f"**Latitude:** {result['lat']}")
+                st.write(f"**Longitude:** {result['lon']}")
+
+        except GeocodingError as exc:
+            st.error(str(exc))
+
+    
     radius_miles = st.slider(
         "Search radius (miles)",
         min_value=1,
