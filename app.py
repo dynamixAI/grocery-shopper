@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import random
 
+from services.geocoding import geocode_location, GeocodingError
 
 st.set_page_config(
     page_title="Grocery Shopper",
