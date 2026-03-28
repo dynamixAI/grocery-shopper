@@ -64,7 +64,8 @@ def initialise_session() -> None:
         "nearby_store_results": [],
         "confirmed_stores": [],
         "comparison_results": {},
-        "final_selections": {}
+        "final_selections": {},
+        "shopping_checklist": {}
     }
 
     for key, value in defaults.items():
@@ -269,6 +270,7 @@ def step_3_stores() -> None:
             st.session_state.confirmed_stores = []
             st.session_state.comparison_results = {}
             st.session_state.final_selections = {}
+            st.session_state.shopping_checklist = {}
 
             for key in list(st.session_state.keys()):
                 if key.startswith("store_checkbox_"):
@@ -383,6 +385,9 @@ def step_4_compare() -> None:
 
         if st.button("Save selections", type="primary"):
             st.session_state.final_selections = final_selections
+            st.session_state.shopping_checklist = {
+                item: False for item in final_selections.keys()
+            }
             st.success("Selections saved.")
 
     col1, col2 = st.columns(2)
@@ -449,6 +454,70 @@ def step_5_basket() -> None:
             .rename(columns={"store_brand": "Store", "price": "Subtotal (£)"})
         )
         st.dataframe(store_summary, use_container_width=True, hide_index=True)
+
+        st.markdown("## Shopping Mode Checklist")
+        st.write("Tick items as you place them in your basket.")
+
+        if not st.session_state.shopping_checklist:
+            st.session_state.shopping_checklist = {
+                row["wanted_item"]: False for row in basket_rows
+            }
+
+        picked_count = 0
+        total_items = len(basket_rows)
+
+        for row in basket_rows:
+            wanted_item = row["wanted_item"]
+            checkbox_key = f"basket_check_{wanted_item}"
+
+            current_value = st.session_state.shopping_checklist.get(wanted_item, False)
+
+            checked = st.checkbox(
+                f"{wanted_item.title()} — {row['matched_product']} | {row['store_brand']} | £{row['price']:.2f}",
+                value=current_value,
+                key=checkbox_key
+            )
+
+            st.session_state.shopping_checklist[wanted_item] = checked
+
+            if checked:
+                picked_count += 1
+
+        remaining_count = total_items - picked_count
+        progress_value = picked_count / total_items if total_items > 0 else 0
+
+        st.markdown("### Shopping Progress")
+        st.progress(progress_value)
+
+        progress_col1, progress_col2, progress_col3 = st.columns(3)
+
+        with progress_col1:
+            st.metric("Picked", picked_count)
+
+        with progress_col2:
+            st.metric("Remaining", remaining_count)
+
+        with progress_col3:
+            st.metric("Completion", f"{progress_value * 100:.0f}%")
+
+        csv_download_df = basket_df.rename(columns={
+            "wanted_item": "wanted_item",
+            "store_brand": "store",
+            "branch": "branch",
+            "matched_product": "selected_product",
+            "price": "price_gbp",
+            "pack_size": "pack_size",
+            "offer": "offer"
+        })[["wanted_item", "store", "branch", "selected_product", "price_gbp", "pack_size", "offer"]]
+
+        csv_data = csv_download_df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download basket as CSV",
+            data=csv_data,
+            file_name="grocery_shopper_final_basket.csv",
+            mime="text/csv"
+        )
 
     if st.button("← Back"):
         go_to_step(4)
