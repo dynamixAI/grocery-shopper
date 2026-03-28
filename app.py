@@ -9,6 +9,15 @@ st.set_page_config(
 )
 
 
+AVAILABLE_STORES = [
+    "Aldi",
+    "Farmfoods",
+    "Lidl",
+    "Asda",
+    "Sainsbury's"
+]
+
+
 def parse_items(raw_text: str) -> list[str]:
     """
     Clean and standardise user-entered shopping items.
@@ -61,8 +70,8 @@ def main() -> None:
 
         selected_stores = st.multiselect(
             "Choose stores to compare",
-            options=["Aldi", "Farmfoods"],
-            default=["Aldi", "Farmfoods"]
+            options=AVAILABLE_STORES,
+            default=[]
         )
 
         location = st.text_input(
