@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import random
 
 
 st.set_page_config(
@@ -20,106 +21,57 @@ AVAILABLE_STORES = [
 
 MOCK_STORE_RESULTS = {
     "Aldi": [
-        {
-            "branch": "Aldi Wigan Central",
-            "address": "Wallgate, Wigan, WN1 1BE",
-            "distance_miles": 0.8
-        },
-        {
-            "branch": "Aldi Robin Park",
-            "address": "Scot Lane, Wigan, WN5 0UH",
-            "distance_miles": 1.6
-        },
-        {
-            "branch": "Aldi Hindley",
-            "address": "Atherton Road, Hindley, WN2 3EU",
-            "distance_miles": 3.2
-        }
+        {"branch": "Aldi Wigan Central", "address": "Wallgate, Wigan, WN1 1BE", "distance_miles": 0.8},
+        {"branch": "Aldi Robin Park", "address": "Scot Lane, Wigan, WN5 0UH", "distance_miles": 1.6},
+        {"branch": "Aldi Hindley", "address": "Atherton Road, Hindley, WN2 3EU", "distance_miles": 3.2}
     ],
     "Farmfoods": [
-        {
-            "branch": "Farmfoods Wigan",
-            "address": "Standishgate, Wigan, WN1 1UP",
-            "distance_miles": 0.9
-        },
-        {
-            "branch": "Farmfoods Ince",
-            "address": "Ince Green Lane, Wigan, WN2 2AL",
-            "distance_miles": 2.4
-        }
+        {"branch": "Farmfoods Wigan", "address": "Standishgate, Wigan, WN1 1UP", "distance_miles": 0.9},
+        {"branch": "Farmfoods Ince", "address": "Ince Green Lane, Wigan, WN2 2AL", "distance_miles": 2.4}
     ],
     "Lidl": [
-        {
-            "branch": "Lidl Wigan",
-            "address": "Warrington Road, Wigan, WN3 6XB",
-            "distance_miles": 1.4
-        },
-        {
-            "branch": "Lidl Pemberton",
-            "address": "Ormskirk Road, Wigan, WN5 9AN",
-            "distance_miles": 2.7
-        }
+        {"branch": "Lidl Wigan", "address": "Warrington Road, Wigan, WN3 6XB", "distance_miles": 1.4},
+        {"branch": "Lidl Pemberton", "address": "Ormskirk Road, Wigan, WN5 9AN", "distance_miles": 2.7}
     ],
     "Asda": [
-        {
-            "branch": "Asda Robin Park",
-            "address": "Loire Drive, Wigan, WN5 0UH",
-            "distance_miles": 1.5
-        },
-        {
-            "branch": "Asda Golborne",
-            "address": "Atherleigh Way, Golborne, WA3 3SP",
-            "distance_miles": 4.6
-        }
+        {"branch": "Asda Robin Park", "address": "Loire Drive, Wigan, WN5 0UH", "distance_miles": 1.5},
+        {"branch": "Asda Golborne", "address": "Atherleigh Way, Golborne, WA3 3SP", "distance_miles": 4.6}
     ],
     "Sainsbury's": [
-        {
-            "branch": "Sainsbury's Wigan",
-            "address": "Worthington Way, Wigan, WN3 6XA",
-            "distance_miles": 1.3
-        },
-        {
-            "branch": "Sainsbury's Leigh",
-            "address": "The Loom, Leigh, WN7 4XU",
-            "distance_miles": 5.2
-        }
+        {"branch": "Sainsbury's Wigan", "address": "Worthington Way, Wigan, WN3 6XA", "distance_miles": 1.3},
+        {"branch": "Sainsbury's Leigh", "address": "The Loom, Leigh, WN7 4XU", "distance_miles": 5.2}
     ]
 }
 
 
+PACK_SIZES = ["500g", "1kg", "2L", "6 pack", "12 pack", "750ml", "1 loaf", "4 rolls"]
+OFFERS = ["No offer", "2 for £3", "Club deal", "Special offer", "Reduced today", "Buy 1 Get 1 Half Price"]
+
+
 def clean_item_text(text: str) -> str:
-    """Trim spaces and normalise repeated internal spaces."""
     return " ".join(text.strip().split())
 
 
 def initialise_session() -> None:
-    if "draft_items" not in st.session_state:
-        st.session_state.draft_items = []
+    defaults = {
+        "draft_items": [],
+        "confirmed_items": [],
+        "selected_store_brands": [],
+        "location_input": "",
+        "radius_miles": 2,
+        "budget": 0.0,
+        "nearby_store_results": [],
+        "confirmed_stores": [],
+        "comparison_results": {},
+        "final_selections": {}
+    }
 
-    if "confirmed_items" not in st.session_state:
-        st.session_state.confirmed_items = []
-
-    if "selected_store_brands" not in st.session_state:
-        st.session_state.selected_store_brands = []
-
-    if "location_input" not in st.session_state:
-        st.session_state.location_input = ""
-
-    if "radius_miles" not in st.session_state:
-        st.session_state.radius_miles = 2
-
-    if "budget" not in st.session_state:
-        st.session_state.budget = 0.0
-
-    if "nearby_store_results" not in st.session_state:
-        st.session_state.nearby_store_results = []
-
-    if "confirmed_stores" not in st.session_state:
-        st.session_state.confirmed_stores = []
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
 def add_draft_item() -> None:
-    """Add item from the slim input box into the draft list."""
     raw_value = st.session_state.get("item_input_box", "")
     cleaned_value = clean_item_text(raw_value)
 
@@ -134,7 +86,6 @@ def add_draft_item() -> None:
 
 
 def remove_draft_item(index: int) -> None:
-    """Remove a draft item by index."""
     if 0 <= index < len(st.session_state.draft_items):
         st.session_state.draft_items.pop(index)
 
@@ -158,13 +109,41 @@ def get_mock_nearby_stores(selected_brands: list[str], radius_miles: int) -> lis
     return results
 
 
+def generate_mock_product_results(items: list[str], confirmed_stores: list[dict]) -> dict:
+    random.seed(42)
+    results = {}
+
+    for item in items:
+        item_results = []
+
+        for store in confirmed_stores:
+            base_price = round(random.uniform(0.79, 6.99), 2)
+            pack_size = random.choice(PACK_SIZES)
+            offer = random.choice(OFFERS)
+
+            item_results.append({
+                "wanted_item": item,
+                "store_brand": store["store_brand"],
+                "branch": store["branch"],
+                "address": store["address"],
+                "matched_product": f"{item.title()} - {store['store_brand']} Choice",
+                "price": base_price,
+                "pack_size": pack_size,
+                "offer": offer
+            })
+
+        results[item] = item_results
+
+    return results
+
+
 def main() -> None:
     initialise_session()
 
     st.title("🛒 Grocery Shopper")
     st.subheader("Precision shopping planner")
     st.write(
-        "Enter your items, choose store brands, search nearby branches, and confirm the exact stores you want to compare."
+        "Enter your items, choose store brands, confirm nearby branches, compare products, and build your basket."
     )
 
     with st.sidebar:
@@ -216,6 +195,8 @@ def main() -> None:
             st.session_state.confirmed_items = []
             st.session_state.nearby_store_results = []
             st.session_state.confirmed_stores = []
+            st.session_state.comparison_results = {}
+            st.session_state.final_selections = {}
 
     if st.session_state.draft_items:
         st.markdown("### Current Item List")
@@ -260,6 +241,8 @@ def main() -> None:
         st.session_state.budget = budget
         st.session_state.nearby_store_results = nearby_store_results
         st.session_state.confirmed_stores = []
+        st.session_state.comparison_results = {}
+        st.session_state.final_selections = {}
 
         st.success("Nearby store search completed.")
 
@@ -268,9 +251,7 @@ def main() -> None:
 
         with col1:
             st.markdown("### Confirmed Shopping List")
-            items_df = pd.DataFrame({
-                "Wanted Item": st.session_state.confirmed_items
-            })
+            items_df = pd.DataFrame({"Wanted Item": st.session_state.confirmed_items})
             st.dataframe(items_df, use_container_width=True, hide_index=True)
 
         with col2:
@@ -290,8 +271,7 @@ def main() -> None:
     if st.session_state.nearby_store_results:
         st.markdown("### Nearby Stores Found")
 
-        nearby_df = pd.DataFrame(st.session_state.nearby_store_results)
-        nearby_df = nearby_df.rename(columns={
+        nearby_df = pd.DataFrame(st.session_state.nearby_store_results).rename(columns={
             "store_brand": "Store",
             "branch": "Branch",
             "address": "Address",
@@ -320,13 +300,14 @@ def main() -> None:
                 st.warning("Please tick at least one store branch to continue.")
             else:
                 st.session_state.confirmed_stores = confirmed_stores
+                st.session_state.comparison_results = {}
+                st.session_state.final_selections = {}
                 st.success("Store branches confirmed successfully.")
 
     if st.session_state.confirmed_stores:
         st.markdown("### Confirmed Stores")
 
-        confirmed_df = pd.DataFrame(st.session_state.confirmed_stores)
-        confirmed_df = confirmed_df.rename(columns={
+        confirmed_df = pd.DataFrame(st.session_state.confirmed_stores).rename(columns={
             "store_brand": "Store",
             "branch": "Branch",
             "address": "Address",
@@ -334,9 +315,95 @@ def main() -> None:
         })
         st.dataframe(confirmed_df, use_container_width=True, hide_index=True)
 
-        st.info(
-            "Next, we will search products only from these confirmed store branches and compare prices."
+        if st.button("Compare product prices", type="primary"):
+            st.session_state.comparison_results = generate_mock_product_results(
+                st.session_state.confirmed_items,
+                st.session_state.confirmed_stores
+            )
+            st.success("Product comparison results generated.")
+
+    if st.session_state.comparison_results:
+        st.markdown("## Product Comparison")
+
+        final_selections = {}
+
+        for item, item_results in st.session_state.comparison_results.items():
+            st.markdown(f"### {item.title()}")
+
+            item_df = pd.DataFrame(item_results)
+            display_df = item_df.rename(columns={
+                "store_brand": "Store",
+                "branch": "Branch",
+                "matched_product": "Matched Product",
+                "price": "Price (£)",
+                "pack_size": "Pack Size",
+                "offer": "Offer"
+            })[["Store", "Branch", "Matched Product", "Price (£)", "Pack Size", "Offer"]]
+
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            selection_options = [
+                f"{row['store_brand']} | {row['branch']} | {row['matched_product']} | £{row['price']:.2f} | {row['offer']}"
+                for row in item_results
+            ]
+
+            selected_option = st.radio(
+                f"Choose your preferred option for {item}",
+                options=selection_options,
+                key=f"selection_{item}"
+            )
+
+            selected_index = selection_options.index(selected_option)
+            final_selections[item] = item_results[selected_index]
+
+        if st.button("Build final basket", type="primary"):
+            st.session_state.final_selections = final_selections
+            st.success("Final basket created successfully.")
+
+    if st.session_state.final_selections:
+        st.markdown("## Final Basket")
+
+        basket_rows = list(st.session_state.final_selections.values())
+        basket_df = pd.DataFrame(basket_rows)
+
+        display_basket_df = basket_df.rename(columns={
+            "wanted_item": "Wanted Item",
+            "store_brand": "Store",
+            "branch": "Branch",
+            "matched_product": "Selected Product",
+            "price": "Price (£)",
+            "pack_size": "Pack Size",
+            "offer": "Offer"
+        })[["Wanted Item", "Store", "Branch", "Selected Product", "Price (£)", "Pack Size", "Offer"]]
+
+        st.dataframe(display_basket_df, use_container_width=True, hide_index=True)
+
+        total_cost = basket_df["price"].sum()
+        budget = st.session_state.budget
+        difference = budget - total_cost
+
+        st.markdown("### Basket Summary")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Total Basket Cost", f"£{total_cost:.2f}")
+
+        with col2:
+            if difference >= 0:
+                st.metric("Budget Remaining", f"£{difference:.2f}")
+            else:
+                st.metric("Over Budget", f"£{abs(difference):.2f}")
+
+        with col3:
+            st.metric("Items Selected", len(basket_rows))
+
+        st.markdown("### Spend by Store")
+        store_summary = (
+            basket_df.groupby("store_brand", as_index=False)["price"]
+            .sum()
+            .rename(columns={"store_brand": "Store", "price": "Subtotal (£)"})
         )
+        st.dataframe(store_summary, use_container_width=True, hide_index=True)
 
 
 if __name__ == "__main__":
