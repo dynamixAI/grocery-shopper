@@ -54,12 +54,13 @@ def clean_item_text(text: str) -> str:
 
 def initialise_session() -> None:
     defaults = {
+        "step": 1,
         "draft_items": [],
         "confirmed_items": [],
-        "selected_store_brands": [],
         "location_input": "",
         "radius_miles": 2,
-        "budget": 0.0,
+        "budget": 100.0,
+        "selected_store_brands": [],
         "nearby_store_results": [],
         "confirmed_stores": [],
         "comparison_results": {},
@@ -69,6 +70,10 @@ def initialise_session() -> None:
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+
+def go_to_step(step_number: int) -> None:
+    st.session_state.step = step_number
 
 
 def add_draft_item() -> None:
@@ -137,46 +142,22 @@ def generate_mock_product_results(items: list[str], confirmed_stores: list[dict]
     return results
 
 
-def main() -> None:
-    initialise_session()
+def render_progress() -> None:
+    step_names = {
+        1: "Items",
+        2: "Location & Budget",
+        3: "Stores",
+        4: "Compare",
+        5: "Basket"
+    }
 
-    st.title("🛒 Grocery Shopper")
-    st.subheader("Precision shopping planner")
-    st.write(
-        "Enter your items, choose store brands, confirm nearby branches, compare products, and build your basket."
-    )
+    st.markdown(f"### Step {st.session_state.step} of 5: {step_names[st.session_state.step]}")
+    st.progress(st.session_state.step / 5)
 
-    with st.sidebar:
-        st.header("Shopping Settings")
 
-        selected_store_brands = st.multiselect(
-            "Choose store brands to search",
-            options=AVAILABLE_STORES,
-            default=st.session_state.selected_store_brands
-        )
+def step_1_items() -> None:
+    st.markdown("## Step 1 — Add Shopping Items")
 
-        location_input = st.text_input(
-            "Postcode or area",
-            value=st.session_state.location_input,
-            placeholder="e.g. WN1 3FG or Wigan"
-        )
-
-        radius_miles = st.slider(
-            "Search radius (miles)",
-            min_value=1,
-            max_value=10,
-            value=st.session_state.radius_miles,
-            step=1
-        )
-
-        budget = st.number_input(
-            "Budget (£)",
-            min_value=0.0,
-            value=float(st.session_state.budget) if st.session_state.budget else 100.0,
-            step=1.0
-        )
-
-    st.markdown("### Shopping Items")
     st.text_input(
         "Type one item and press Enter",
         key="item_input_box",
@@ -184,23 +165,16 @@ def main() -> None:
         on_change=add_draft_item
     )
 
-    col_a, col_b = st.columns([1, 1])
+    col1, col2 = st.columns(2)
 
-    with col_a:
+    with col1:
         if st.button("Add item"):
             add_draft_item()
 
-    with col_b:
-        if st.button("Clear draft list"):
+    with col2:
+        if st.button("Clear item list"):
             st.session_state.draft_items = []
             st.session_state.confirmed_items = []
-            st.session_state.nearby_store_results = []
-            st.session_state.confirmed_stores = []
-            st.session_state.comparison_results = {}
-            st.session_state.final_selections = {}
-            for key in list(st.session_state.keys()):
-                if key.startswith("store_checkbox_"):
-                    del st.session_state[key]
             st.rerun()
 
     if st.session_state.draft_items:
@@ -221,59 +195,87 @@ def main() -> None:
             st.session_state.confirmed_items = st.session_state.draft_items.copy()
             st.success("Shopping list confirmed.")
 
-    if st.button("Find nearby stores"):
-        parsed_items = st.session_state.confirmed_items
+    if st.session_state.confirmed_items:
+        st.markdown("### Confirmed Shopping List")
+        items_df = pd.DataFrame({"Wanted Item": st.session_state.confirmed_items})
+        st.dataframe(items_df, use_container_width=True, hide_index=True)
 
-        if not parsed_items:
-            st.warning("Please add your items and click Done first.")
-            return
+        if st.button("Next →"):
+            go_to_step(2)
+            st.rerun()
 
+
+def step_2_location_budget() -> None:
+    st.markdown("## Step 2 — Enter Location and Budget")
+
+    location_input = st.text_input(
+        "Postcode or area",
+        value=st.session_state.location_input,
+        placeholder="e.g. WN1 3FG or Wigan"
+    )
+
+    radius_miles = st.slider(
+        "Search radius (miles)",
+        min_value=1,
+        max_value=10,
+        value=st.session_state.radius_miles,
+        step=1
+    )
+
+    budget = st.number_input(
+        "Budget (£)",
+        min_value=0.0,
+        value=float(st.session_state.budget),
+        step=1.0
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("← Back"):
+            go_to_step(1)
+            st.rerun()
+
+    with col2:
+        if st.button("Next →", type="primary"):
+            if not location_input.strip():
+                st.warning("Please enter a postcode or area.")
+            else:
+                st.session_state.location_input = location_input.strip()
+                st.session_state.radius_miles = radius_miles
+                st.session_state.budget = budget
+                go_to_step(3)
+                st.rerun()
+
+
+def step_3_stores() -> None:
+    st.markdown("## Step 3 — Choose Store Brands and Confirm Nearby Branches")
+
+    selected_store_brands = st.multiselect(
+        "Choose store brands to search",
+        options=AVAILABLE_STORES,
+        default=st.session_state.selected_store_brands
+    )
+
+    if st.button("Find nearby stores", type="primary"):
         if not selected_store_brands:
             st.warning("Please choose at least one store brand.")
-            return
+        else:
+            st.session_state.selected_store_brands = selected_store_brands
+            st.session_state.nearby_store_results = get_mock_nearby_stores(
+                selected_store_brands,
+                st.session_state.radius_miles
+            )
+            st.session_state.confirmed_stores = []
+            st.session_state.comparison_results = {}
+            st.session_state.final_selections = {}
 
-        if not location_input.strip():
-            st.warning("Please enter a postcode or area.")
-            return
+            for key in list(st.session_state.keys()):
+                if key.startswith("store_checkbox_"):
+                    del st.session_state[key]
 
-        nearby_store_results = get_mock_nearby_stores(selected_store_brands, radius_miles)
-
-        st.session_state.selected_store_brands = selected_store_brands
-        st.session_state.location_input = location_input.strip()
-        st.session_state.radius_miles = radius_miles
-        st.session_state.budget = budget
-        st.session_state.nearby_store_results = nearby_store_results
-        st.session_state.confirmed_stores = []
-        st.session_state.comparison_results = {}
-        st.session_state.final_selections = {}
-
-        for key in list(st.session_state.keys()):
-            if key.startswith("store_checkbox_"):
-                del st.session_state[key]
-
-        st.success("Nearby store search completed.")
-
-    if st.session_state.confirmed_items:
-        col1, col2 = st.columns([2, 1])
-
-        with col1:
-            st.markdown("### Confirmed Shopping List")
-            items_df = pd.DataFrame({"Wanted Item": st.session_state.confirmed_items})
-            st.dataframe(items_df, use_container_width=True, hide_index=True)
-
-        with col2:
-            st.markdown("### Shopping Summary")
-            st.metric("Items entered", len(st.session_state.confirmed_items))
-            st.metric("Budget", f"£{st.session_state.budget:.2f}")
-            st.metric("Radius", f"{st.session_state.radius_miles} mile(s)")
-
-            if st.session_state.location_input:
-                st.write("**Location input:**")
-                st.write(st.session_state.location_input)
-
-            if st.session_state.selected_store_brands:
-                st.write("**Store brands selected:**")
-                st.write(", ".join(st.session_state.selected_store_brands))
+            st.success("Nearby store search completed.")
+            st.rerun()
 
     if st.session_state.nearby_store_results:
         st.markdown("### Nearby Stores Found")
@@ -287,7 +289,6 @@ def main() -> None:
         st.dataframe(nearby_df, use_container_width=True, hide_index=True)
 
         st.markdown("### Confirm Exact Stores")
-        st.write("Tick the branches you want to use for product comparison.")
 
         for idx, store in enumerate(st.session_state.nearby_store_results):
             label = (
@@ -304,16 +305,14 @@ def main() -> None:
                     confirmed_stores.append(store)
 
             if not confirmed_stores:
-                st.warning("Please tick at least one store branch to continue.")
+                st.warning("Please tick at least one store branch.")
             else:
                 st.session_state.confirmed_stores = confirmed_stores
-                st.session_state.comparison_results = {}
-                st.session_state.final_selections = {}
                 st.success("Store branches confirmed successfully.")
+                st.rerun()
 
     if st.session_state.confirmed_stores:
         st.markdown("### Confirmed Stores")
-
         confirmed_df = pd.DataFrame(st.session_state.confirmed_stores).rename(columns={
             "store_brand": "Store",
             "branch": "Branch",
@@ -322,16 +321,35 @@ def main() -> None:
         })
         st.dataframe(confirmed_df, use_container_width=True, hide_index=True)
 
-        if st.button("Compare product prices", type="primary"):
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("← Back"):
+            go_to_step(2)
+            st.rerun()
+
+    with col2:
+        if st.button("Next →", type="primary"):
+            if not st.session_state.confirmed_stores:
+                st.warning("Please confirm at least one store branch.")
+            else:
+                go_to_step(4)
+                st.rerun()
+
+
+def step_4_compare() -> None:
+    st.markdown("## Step 4 — Compare Product Results")
+
+    if not st.session_state.comparison_results:
+        if st.button("Generate product comparison", type="primary"):
             st.session_state.comparison_results = generate_mock_product_results(
                 st.session_state.confirmed_items,
                 st.session_state.confirmed_stores
             )
             st.success("Product comparison results generated.")
+            st.rerun()
 
     if st.session_state.comparison_results:
-        st.markdown("## Product Comparison")
-
         final_selections = {}
 
         for item, item_results in st.session_state.comparison_results.items():
@@ -363,14 +381,34 @@ def main() -> None:
             selected_index = selection_options.index(selected_option)
             final_selections[item] = item_results[selected_index]
 
-        if st.button("Build final basket", type="primary"):
+        if st.button("Save selections", type="primary"):
             st.session_state.final_selections = final_selections
-            st.success("Final basket created successfully.")
+            st.success("Selections saved.")
 
-    if st.session_state.final_selections:
-        st.markdown("## Final Basket")
+    col1, col2 = st.columns(2)
 
-        basket_rows = list(st.session_state.final_selections.values())
+    with col1:
+        if st.button("← Back"):
+            go_to_step(3)
+            st.rerun()
+
+    with col2:
+        if st.button("Next →", type="primary"):
+            if not st.session_state.final_selections:
+                st.warning("Please save your product selections first.")
+            else:
+                go_to_step(5)
+                st.rerun()
+
+
+def step_5_basket() -> None:
+    st.markdown("## Step 5 — Final Basket")
+
+    basket_rows = list(st.session_state.final_selections.values())
+
+    if not basket_rows:
+        st.warning("No basket selections found.")
+    else:
         basket_df = pd.DataFrame(basket_rows)
 
         display_basket_df = basket_df.rename(columns={
@@ -411,6 +449,30 @@ def main() -> None:
             .rename(columns={"store_brand": "Store", "price": "Subtotal (£)"})
         )
         st.dataframe(store_summary, use_container_width=True, hide_index=True)
+
+    if st.button("← Back"):
+        go_to_step(4)
+        st.rerun()
+
+
+def main() -> None:
+    initialise_session()
+
+    st.title("🛒 Grocery Shopper")
+    st.write("A step-by-step grocery comparison planner.")
+
+    render_progress()
+
+    if st.session_state.step == 1:
+        step_1_items()
+    elif st.session_state.step == 2:
+        step_2_location_budget()
+    elif st.session_state.step == 3:
+        step_3_stores()
+    elif st.session_state.step == 4:
+        step_4_compare()
+    elif st.session_state.step == 5:
+        step_5_basket()
 
 
 if __name__ == "__main__":
