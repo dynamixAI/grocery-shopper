@@ -87,21 +87,17 @@ MOCK_STORE_RESULTS = {
 }
 
 
-def parse_items(raw_text: str) -> list[str]:
-    lines = raw_text.splitlines()
-    cleaned_items = []
-
-    for line in lines:
-        item = " ".join(line.strip().split())
-        if item:
-            cleaned_items.append(item)
-
-    return list(dict.fromkeys(cleaned_items))
+def clean_item_text(text: str) -> str:
+    """Trim spaces and normalise repeated internal spaces."""
+    return " ".join(text.strip().split())
 
 
 def initialise_session() -> None:
-    if "parsed_items" not in st.session_state:
-        st.session_state.parsed_items = []
+    if "draft_items" not in st.session_state:
+        st.session_state.draft_items = []
+
+    if "confirmed_items" not in st.session_state:
+        st.session_state.confirmed_items = []
 
     if "selected_store_brands" not in st.session_state:
         st.session_state.selected_store_brands = []
@@ -120,6 +116,27 @@ def initialise_session() -> None:
 
     if "confirmed_stores" not in st.session_state:
         st.session_state.confirmed_stores = []
+
+
+def add_draft_item() -> None:
+    """Add item from the slim input box into the draft list."""
+    raw_value = st.session_state.get("item_input_box", "")
+    cleaned_value = clean_item_text(raw_value)
+
+    if not cleaned_value:
+        return
+
+    existing_lower = [item.lower() for item in st.session_state.draft_items]
+    if cleaned_value.lower() not in existing_lower:
+        st.session_state.draft_items.append(cleaned_value)
+
+    st.session_state.item_input_box = ""
+
+
+def remove_draft_item(index: int) -> None:
+    """Remove a draft item by index."""
+    if 0 <= index < len(st.session_state.draft_items):
+        st.session_state.draft_items.pop(index)
 
 
 def get_mock_nearby_stores(selected_brands: list[str], radius_miles: int) -> list[dict]:
@@ -180,19 +197,51 @@ def main() -> None:
         )
 
     st.markdown("### Shopping Items")
-    raw_items = st.text_area(
-        "Enter one item per line",
-        placeholder="eggs\nmilk\nbread\nchicken\nrice",
-        height=220
+    st.text_input(
+        "Type one item and press Enter",
+        key="item_input_box",
+        placeholder="e.g. milk",
+        on_change=add_draft_item
     )
 
-    process_clicked = st.button("Find nearby stores", type="primary")
+    col_a, col_b = st.columns([1, 1])
+
+    with col_a:
+        if st.button("Add item"):
+            add_draft_item()
+
+    with col_b:
+        if st.button("Clear draft list"):
+            st.session_state.draft_items = []
+            st.session_state.confirmed_items = []
+            st.session_state.nearby_store_results = []
+            st.session_state.confirmed_stores = []
+
+    if st.session_state.draft_items:
+        st.markdown("### Current Item List")
+
+        for idx, item in enumerate(st.session_state.draft_items):
+            item_col, remove_col = st.columns([5, 1])
+
+            with item_col:
+                st.write(f"• {item}")
+
+            with remove_col:
+                if st.button("Remove", key=f"remove_item_{idx}"):
+                    remove_draft_item(idx)
+                    st.rerun()
+
+        if st.button("Done", type="primary"):
+            st.session_state.confirmed_items = st.session_state.draft_items.copy()
+            st.success("Shopping list confirmed.")
+
+    process_clicked = st.button("Find nearby stores")
 
     if process_clicked:
-        parsed_items = parse_items(raw_items)
+        parsed_items = st.session_state.confirmed_items
 
         if not parsed_items:
-            st.warning("Please enter at least one shopping item.")
+            st.warning("Please add your items and click Done first.")
             return
 
         if not selected_store_brands:
@@ -205,7 +254,6 @@ def main() -> None:
 
         nearby_store_results = get_mock_nearby_stores(selected_store_brands, radius_miles)
 
-        st.session_state.parsed_items = parsed_items
         st.session_state.selected_store_brands = selected_store_brands
         st.session_state.location_input = location_input.strip()
         st.session_state.radius_miles = radius_miles
@@ -215,25 +263,29 @@ def main() -> None:
 
         st.success("Nearby store search completed.")
 
-    if st.session_state.parsed_items:
+    if st.session_state.confirmed_items:
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            st.markdown("### Cleaned Shopping List")
+            st.markdown("### Confirmed Shopping List")
             items_df = pd.DataFrame({
-                "Wanted Item": st.session_state.parsed_items
+                "Wanted Item": st.session_state.confirmed_items
             })
             st.dataframe(items_df, use_container_width=True, hide_index=True)
 
         with col2:
             st.markdown("### Shopping Summary")
-            st.metric("Items entered", len(st.session_state.parsed_items))
+            st.metric("Items entered", len(st.session_state.confirmed_items))
             st.metric("Budget", f"£{st.session_state.budget:.2f}")
             st.metric("Radius", f"{st.session_state.radius_miles} mile(s)")
-            st.write("**Location input:**")
-            st.write(st.session_state.location_input)
-            st.write("**Store brands selected:**")
-            st.write(", ".join(st.session_state.selected_store_brands))
+
+            if st.session_state.location_input:
+                st.write("**Location input:**")
+                st.write(st.session_state.location_input)
+
+            if st.session_state.selected_store_brands:
+                st.write("**Store brands selected:**")
+                st.write(", ".join(st.session_state.selected_store_brands))
 
     if st.session_state.nearby_store_results:
         st.markdown("### Nearby Stores Found")
@@ -262,9 +314,6 @@ def main() -> None:
 
             if is_selected:
                 confirmed_stores.append(store)
-
-        if confirmed_stores:
-            st.session_state.confirmed_stores = confirmed_stores
 
         if st.button("Confirm selected stores"):
             if not confirmed_stores:
