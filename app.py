@@ -201,17 +201,20 @@ def step_1_items() -> None:
 def step_2_location_budget() -> None:
     st.markdown("## Location and Budget")
 
-    location_input = st.text_input(
+    st.text_input(
         "Postcode or area",
-        value=st.session_state.location_input,
+        key="location_input",
         placeholder="e.g. WN1 3FG or Wigan"
     )
 
     if st.button("Test location lookup"):
         try:
-            result = geocode_location(location_input)
+            query = st.session_state.location_input.strip()
+            result = geocode_location(query)
 
-            if result is None:
+            if not query:
+                st.warning("Please enter a postcode or area first.")
+            elif result is None:
                 st.warning("No location match found.")
             else:
                 st.success("Location found successfully.")
@@ -222,20 +225,19 @@ def step_2_location_budget() -> None:
         except GeocodingError as exc:
             st.error(str(exc))
 
-    
-    radius_miles = st.slider(
+    st.slider(
         "Search radius (miles)",
         min_value=1,
         max_value=10,
-        value=st.session_state.radius_miles,
-        step=1
+        step=1,
+        key="radius_miles"
     )
 
-    budget = st.number_input(
+    st.number_input(
         "Budget (£)",
         min_value=0.0,
-        value=float(st.session_state.budget),
-        step=1.0
+        step=1.0,
+        key="budget"
     )
 
     col1, col2 = st.columns(2)
@@ -247,12 +249,9 @@ def step_2_location_budget() -> None:
 
     with col2:
         if st.button("Next →", type="primary"):
-            if not location_input.strip():
+            if not st.session_state.location_input.strip():
                 st.warning("Please enter a postcode or area.")
             else:
-                st.session_state.location_input = location_input.strip()
-                st.session_state.radius_miles = radius_miles
-                st.session_state.budget = budget
                 go_to_step(3)
                 st.rerun()
 
