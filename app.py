@@ -149,11 +149,12 @@ def render_progress() -> None:
         2: "Location & Budget",
         3: "Stores",
         4: "Compare",
-        5: "Basket"
+        5: "Basket",
+        6: "Shopping List"
     }
 
-    st.markdown(f"### Step {st.session_state.step} of 5: {step_names[st.session_state.step]}")
-    st.progress(st.session_state.step / 5)
+    st.markdown(f"### Step {st.session_state.step} of 6: {step_names[st.session_state.step]}")
+    st.progress(st.session_state.step / 6)
 
 
 def step_1_items() -> None:
@@ -455,51 +456,6 @@ def step_5_basket() -> None:
         )
         st.dataframe(store_summary, use_container_width=True, hide_index=True)
 
-        st.markdown("## Shopping Mode Checklist")
-        st.write("Tick items as you place them in your basket.")
-
-        if not st.session_state.shopping_checklist:
-            st.session_state.shopping_checklist = {
-                row["wanted_item"]: False for row in basket_rows
-            }
-
-        picked_count = 0
-        total_items = len(basket_rows)
-
-        for row in basket_rows:
-            wanted_item = row["wanted_item"]
-            checkbox_key = f"basket_check_{wanted_item}"
-
-            current_value = st.session_state.shopping_checklist.get(wanted_item, False)
-
-            checked = st.checkbox(
-                f"{wanted_item.title()} — {row['matched_product']} | {row['store_brand']} | £{row['price']:.2f}",
-                value=current_value,
-                key=checkbox_key
-            )
-
-            st.session_state.shopping_checklist[wanted_item] = checked
-
-            if checked:
-                picked_count += 1
-
-        remaining_count = total_items - picked_count
-        progress_value = picked_count / total_items if total_items > 0 else 0
-
-        st.markdown("### Shopping Progress")
-        st.progress(progress_value)
-
-        progress_col1, progress_col2, progress_col3 = st.columns(3)
-
-        with progress_col1:
-            st.metric("Picked", picked_count)
-
-        with progress_col2:
-            st.metric("Remaining", remaining_count)
-
-        with progress_col3:
-            st.metric("Completion", f"{progress_value * 100:.0f}%")
-
         csv_download_df = basket_df.rename(columns={
             "wanted_item": "wanted_item",
             "store_brand": "store",
@@ -519,8 +475,77 @@ def step_5_basket() -> None:
             mime="text/csv"
         )
 
-    if st.button("← Back"):
-        go_to_step(4)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("← Back"):
+            go_to_step(4)
+            st.rerun()
+
+    with col2:
+        if st.button("Start Shopping", type="primary"):
+            if not basket_rows:
+                st.warning("No basket selections found.")
+            else:
+                go_to_step(6)
+                st.rerun()
+
+
+def step_6_shopping_list() -> None:
+    st.markdown("## Step 6 — Shopping List")
+    st.write("Use this checklist while shopping and tick items as you place them in your basket.")
+
+    basket_rows = list(st.session_state.final_selections.values())
+
+    if not basket_rows:
+        st.warning("No shopping list found.")
+    else:
+        if not st.session_state.shopping_checklist:
+            st.session_state.shopping_checklist = {
+                row["wanted_item"]: False for row in basket_rows
+            }
+
+        picked_count = 0
+        total_items = len(basket_rows)
+
+        for row in basket_rows:
+            wanted_item = row["wanted_item"]
+            checkbox_key = f"basket_check_{wanted_item}"
+            current_value = st.session_state.shopping_checklist.get(wanted_item, False)
+
+            checked = st.checkbox(
+                f"{wanted_item.title()} — {row['matched_product']} | {row['store_brand']} | £{row['price']:.2f}",
+                value=current_value,
+                key=checkbox_key
+            )
+
+            st.session_state.shopping_checklist[wanted_item] = checked
+
+            if checked:
+                picked_count += 1
+
+        remaining_count = total_items - picked_count
+        progress_value = picked_count / total_items if total_items > 0 else 0
+
+        st.markdown("### Shopping Progress")
+        st.progress(progress_value)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Picked", picked_count)
+
+        with col2:
+            st.metric("Remaining", remaining_count)
+
+        with col3:
+            st.metric("Completion", f"{progress_value * 100:.0f}%")
+
+        if picked_count == total_items and total_items > 0:
+            st.success("Everything on your list has been picked.")
+
+    if st.button("← Back to Basket"):
+        go_to_step(5)
         st.rerun()
 
 
@@ -542,6 +567,8 @@ def main() -> None:
         step_4_compare()
     elif st.session_state.step == 5:
         step_5_basket()
+    elif st.session_state.step == 6:
+        step_6_shopping_list()
 
 
 if __name__ == "__main__":
