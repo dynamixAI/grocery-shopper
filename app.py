@@ -152,11 +152,12 @@ def main() -> None:
         selected_store_brands = st.multiselect(
             "Choose store brands to search",
             options=AVAILABLE_STORES,
-            default=[]
+            default=st.session_state.selected_store_brands
         )
 
         location_input = st.text_input(
             "Postcode or area",
+            value=st.session_state.location_input,
             placeholder="e.g. WN1 3FG or Wigan"
         )
 
@@ -164,14 +165,14 @@ def main() -> None:
             "Search radius (miles)",
             min_value=1,
             max_value=10,
-            value=2,
+            value=st.session_state.radius_miles,
             step=1
         )
 
         budget = st.number_input(
             "Budget (£)",
             min_value=0.0,
-            value=100.0,
+            value=float(st.session_state.budget) if st.session_state.budget else 100.0,
             step=1.0
         )
 
@@ -197,6 +198,10 @@ def main() -> None:
             st.session_state.confirmed_stores = []
             st.session_state.comparison_results = {}
             st.session_state.final_selections = {}
+            for key in list(st.session_state.keys()):
+                if key.startswith("store_checkbox_"):
+                    del st.session_state[key]
+            st.rerun()
 
     if st.session_state.draft_items:
         st.markdown("### Current Item List")
@@ -216,9 +221,7 @@ def main() -> None:
             st.session_state.confirmed_items = st.session_state.draft_items.copy()
             st.success("Shopping list confirmed.")
 
-    process_clicked = st.button("Find nearby stores")
-
-    if process_clicked:
+    if st.button("Find nearby stores"):
         parsed_items = st.session_state.confirmed_items
 
         if not parsed_items:
@@ -243,6 +246,10 @@ def main() -> None:
         st.session_state.confirmed_stores = []
         st.session_state.comparison_results = {}
         st.session_state.final_selections = {}
+
+        for key in list(st.session_state.keys()):
+            if key.startswith("store_checkbox_"):
+                del st.session_state[key]
 
         st.success("Nearby store search completed.")
 
@@ -282,20 +289,20 @@ def main() -> None:
         st.markdown("### Confirm Exact Stores")
         st.write("Tick the branches you want to use for product comparison.")
 
-        confirmed_stores = []
-
         for idx, store in enumerate(st.session_state.nearby_store_results):
             label = (
                 f"{store['store_brand']} — {store['branch']} | "
                 f"{store['address']} | {store['distance_miles']} miles"
             )
-
-            is_selected = st.checkbox(label, key=f"store_checkbox_{idx}")
-
-            if is_selected:
-                confirmed_stores.append(store)
+            st.checkbox(label, key=f"store_checkbox_{idx}")
 
         if st.button("Confirm selected stores"):
+            confirmed_stores = []
+
+            for idx, store in enumerate(st.session_state.nearby_store_results):
+                if st.session_state.get(f"store_checkbox_{idx}", False):
+                    confirmed_stores.append(store)
+
             if not confirmed_stores:
                 st.warning("Please tick at least one store branch to continue.")
             else:
