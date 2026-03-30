@@ -3,6 +3,7 @@ import pandas as pd
 import random
 
 from services.geocoding import geocode_location, GeocodingError
+from services.stores import lookup_nearby_stores, StoreLookupError
 
 st.set_page_config(
     page_title="Grocery Shopper",
@@ -270,10 +271,15 @@ def step_3_stores() -> None:
             st.warning("Please choose at least one store brand.")
         else:
             st.session_state.selected_store_brands = selected_store_brands
-            st.session_state.nearby_store_results = get_mock_nearby_stores(
-                selected_store_brands,
-                st.session_state.radius_miles
-            )
+                        try:
+                st.session_state.nearby_store_results = lookup_nearby_stores(
+                    location_query=st.session_state.location_input,
+                    radius_miles=st.session_state.radius_miles,
+                    selected_brands=selected_store_brands
+                )
+            except StoreLookupError as exc:
+                st.error(str(exc))
+                return
             st.session_state.confirmed_stores = []
             st.session_state.comparison_results = {}
             st.session_state.final_selections = {}
