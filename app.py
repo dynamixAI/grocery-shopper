@@ -5,6 +5,7 @@ import random
 from services.geocoding import geocode_location, GeocodingError
 from services.stores import lookup_nearby_stores, StoreLookupError
 
+
 st.set_page_config(
     page_title="Grocery Shopper",
     page_icon="🛒",
@@ -20,32 +21,6 @@ AVAILABLE_STORES = [
     "Sainsbury's"
 ]
 
-
-MOCK_STORE_RESULTS = {
-    "Aldi": [
-        {"branch": "Aldi Wigan Central", "address": "Wallgate, Wigan, WN1 1BE", "distance_miles": 0.8},
-        {"branch": "Aldi Robin Park", "address": "Scot Lane, Wigan, WN5 0UH", "distance_miles": 1.6},
-        {"branch": "Aldi Hindley", "address": "Atherton Road, Hindley, WN2 3EU", "distance_miles": 3.2}
-    ],
-    "Farmfoods": [
-        {"branch": "Farmfoods Wigan", "address": "Standishgate, Wigan, WN1 1UP", "distance_miles": 0.9},
-        {"branch": "Farmfoods Ince", "address": "Ince Green Lane, Wigan, WN2 2AL", "distance_miles": 2.4}
-    ],
-    "Lidl": [
-        {"branch": "Lidl Wigan", "address": "Warrington Road, Wigan, WN3 6XB", "distance_miles": 1.4},
-        {"branch": "Lidl Pemberton", "address": "Ormskirk Road, Wigan, WN5 9AN", "distance_miles": 2.7}
-    ],
-    "Asda": [
-        {"branch": "Asda Robin Park", "address": "Loire Drive, Wigan, WN5 0UH", "distance_miles": 1.5},
-        {"branch": "Asda Golborne", "address": "Atherleigh Way, Golborne, WA3 3SP", "distance_miles": 4.6}
-    ],
-    "Sainsbury's": [
-        {"branch": "Sainsbury's Wigan", "address": "Worthington Way, Wigan, WN3 6XA", "distance_miles": 1.3},
-        {"branch": "Sainsbury's Leigh", "address": "The Loom, Leigh, WN7 4XU", "distance_miles": 5.2}
-    ]
-}
-
-
 PACK_SIZES = ["500g", "1kg", "2L", "6 pack", "12 pack", "750ml", "1 loaf", "4 rolls"]
 OFFERS = ["No offer", "2 for £3", "Club deal", "Special offer", "Reduced today", "Buy 1 Get 1 Half Price"]
 
@@ -54,14 +29,37 @@ def clean_item_text(text: str) -> str:
     return " ".join(text.strip().split())
 
 
+def parse_budget_text(raw_value: str) -> float | None:
+    """
+    Convert user-entered budget text into a float.
+    Returns None if invalid.
+    """
+    cleaned = raw_value.strip().replace("£", "").replace(",", "")
+
+    if not cleaned:
+        return None
+
+    try:
+        value = float(cleaned)
+    except ValueError:
+        return None
+
+    if value < 0:
+        return None
+
+    return value
+
+
 def initialise_session() -> None:
     defaults = {
         "step": 1,
         "draft_items": [],
         "confirmed_items": [],
+        "location_input_widget": "",
         "location_input": "",
         "radius_miles": 2,
         "budget": 100.0,
+        "budget_input_widget": "100",
         "selected_store_brands": [],
         "nearby_store_results": [],
         "confirmed_stores": [],
@@ -96,25 +94,6 @@ def add_draft_item() -> None:
 def remove_draft_item(index: int) -> None:
     if 0 <= index < len(st.session_state.draft_items):
         st.session_state.draft_items.pop(index)
-
-
-def get_mock_nearby_stores(selected_brands: list[str], radius_miles: int) -> list[dict]:
-    results = []
-
-    for brand in selected_brands:
-        store_list = MOCK_STORE_RESULTS.get(brand, [])
-
-        for store in store_list:
-            if store["distance_miles"] <= radius_miles:
-                results.append({
-                    "store_brand": brand,
-                    "branch": store["branch"],
-                    "address": store["address"],
-                    "distance_miles": store["distance_miles"]
-                })
-
-    results.sort(key=lambda x: x["distance_miles"])
-    return results
 
 
 def generate_mock_product_results(items: list[str], confirmed_stores: list[dict]) -> dict:
@@ -204,24 +183,27 @@ def step_2_location_budget() -> None:
 
     st.text_input(
         "Postcode or area",
-        key="location_input",
+        key="location_input_widget",
+        value=st.session_state.location_input,
         placeholder="e.g. WN1 3FG or Wigan"
     )
 
     if st.button("Test location lookup"):
         try:
-            query = st.session_state.location_input.strip()
-            result = geocode_location(query)
+            query = st.session_state.location_input_widget.strip()
 
             if not query:
                 st.warning("Please enter a postcode or area first.")
-            elif result is None:
-                st.warning("No location match found.")
             else:
-                st.success("Location found successfully.")
-                st.write(f"**Matched location:** {result['display_name']}")
-                st.write(f"**Latitude:** {result['lat']}")
-                st.write(f"**Longitude:** {result['lon']}")
+                result = geocode_location(query)
+
+                if result is None:
+                    st.warning("No location match found.")
+                else:
+                    st.success("Location found successfully.")
+                    st.write(f"**Matched location:** {result['display_name']}")
+                    st.write(f"**Latitude:** {result['lat']}")
+                    st.write(f"**Longitude:** {result['lon']}")
 
         except GeocodingError as exc:
             st.error(str(exc))
@@ -234,12 +216,19 @@ def step_2_location_budget() -> None:
         key="radius_miles"
     )
 
-    st.number_input(
+    st.text_input(
         "Budget (£)",
-        min_value=0.0,
-        step=1.0,
-        key="budget"
+        key="budget_input_widget",
+        placeholder="e.g. 100"
     )
+
+    parsed_budget = parse_budget_text(st.session_state.budget_input_widget)
+
+    if st.session_state.budget_input_widget.strip():
+        if parsed_budget is None:
+            st.warning("Please enter a valid budget amount, for example 50 or 100.50.")
+        else:
+            st.caption(f"Budget saved preview: £{parsed_budget:.2f}")
 
     col1, col2 = st.columns(2)
 
@@ -250,9 +239,16 @@ def step_2_location_budget() -> None:
 
     with col2:
         if st.button("Next →", type="primary"):
-            if not st.session_state.location_input.strip():
+            saved_location = st.session_state.location_input_widget.strip()
+            saved_budget = parse_budget_text(st.session_state.budget_input_widget)
+
+            if not saved_location:
                 st.warning("Please enter a postcode or area.")
+            elif saved_budget is None:
+                st.warning("Please enter a valid budget before continuing.")
             else:
+                st.session_state.location_input = saved_location
+                st.session_state.budget = saved_budget
                 go_to_step(3)
                 st.rerun()
 
@@ -271,6 +267,7 @@ def step_3_stores() -> None:
             st.warning("Please choose at least one store brand.")
         else:
             st.session_state.selected_store_brands = selected_store_brands
+
             try:
                 st.session_state.nearby_store_results = lookup_nearby_stores(
                     location_query=st.session_state.location_input,
@@ -280,6 +277,7 @@ def step_3_stores() -> None:
             except StoreLookupError as exc:
                 st.error(str(exc))
                 return
+
             st.session_state.confirmed_stores = []
             st.session_state.comparison_results = {}
             st.session_state.final_selections = {}
@@ -289,7 +287,11 @@ def step_3_stores() -> None:
                 if key.startswith("store_checkbox_"):
                     del st.session_state[key]
 
-            st.success("Nearby store search completed.")
+            if not st.session_state.nearby_store_results:
+                st.warning("No nearby matching stores found for the selected brands and radius.")
+            else:
+                st.success("Nearby store search completed.")
+
             st.rerun()
 
     if st.session_state.nearby_store_results:
