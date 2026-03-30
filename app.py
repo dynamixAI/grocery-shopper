@@ -271,7 +271,7 @@ def step_3_stores() -> None:
             st.warning("Please choose at least one store brand.")
         else:
             st.session_state.selected_store_brands = selected_store_brands
-                        try:
+            try:
                 st.session_state.nearby_store_results = lookup_nearby_stores(
                     location_query=st.session_state.location_input,
                     radius_miles=st.session_state.radius_miles,
