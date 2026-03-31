@@ -6,7 +6,10 @@ import requests
 from services.geocoding import GeocodingError, geocode_location
 
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+]
 
 
 class StoreLookupError(Exception):
@@ -18,9 +21,6 @@ def miles_to_metres(miles: float) -> float:
 
 
 def haversine_distance_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Calculate distance between two lat/lon pairs in miles.
-    """
     earth_radius_miles = 3958.8
 
     lat1_rad = math.radians(lat1)
@@ -41,9 +41,6 @@ def haversine_distance_miles(lat1: float, lon1: float, lat2: float, lon2: float)
 
 
 def normalise_brand_name(name: str) -> str:
-    """
-    Normalise common store naming variations.
-    """
     cleaned = " ".join(name.strip().split())
 
     mapping = {
@@ -59,15 +56,11 @@ def normalise_brand_name(name: str) -> str:
 
 
 def is_brand_match(place_name: str, selected_brands: List[str]) -> bool:
-    """
-    Check whether an OSM place name matches one of the chosen brands.
-    """
-    lower_name = place_name.lower()
+    lower_name = place_name.lower().replace("'", "")
 
     for brand in selected_brands:
         brand_lower = brand.lower().replace("'", "")
-        test_name = lower_name.replace("'", "")
-        if brand_lower in test_name:
+        if brand_lower in lower_name:
             return True
 
     return False
@@ -75,17 +68,50 @@ def is_brand_match(place_name: str, selected_brands: List[str]) -> bool:
 
 def build_overpass_query(lat: float, lon: float, radius_metres: float) -> str:
     """
-    Search nearby supermarket/grocery/convenience features around a point.
+    Keep the query as small as possible to reduce timeouts.
     """
+    radius_int = int(radius_metres)
+
     return f"""
     [out:json][timeout:25];
     (
-      node(around:{radius_metres},{lat},{lon})["shop"~"supermarket|convenience|grocery"];
-      way(around:{radius_metres},{lat},{lon})["shop"~"supermarket|convenience|grocery"];
-      relation(around:{radius_metres},{lat},{lon})["shop"~"supermarket|convenience|grocery"];
+      node(around:{radius_int},{lat},{lon})["shop"="supermarket"];
+      node(around:{radius_int},{lat},{lon})["shop"="convenience"];
+      node(around:{radius_int},{lat},{lon})["shop"="grocery"];
+      way(around:{radius_int},{lat},{lon})["shop"="supermarket"];
+      way(around:{radius_int},{lat},{lon})["shop"="convenience"];
+      way(around:{radius_int},{lat},{lon})["shop"="grocery"];
     );
     out center tags;
     """
+
+
+def fetch_overpass_payload(query: str) -> dict:
+    headers = {
+        "User-Agent": "GroceryShopper/1.0"
+    }
+
+    last_error = None
+
+    for endpoint in OVERPASS_ENDPOINTS:
+        try:
+            response = requests.post(
+                endpoint,
+                data={"data": query},
+                headers=headers,
+                timeout=40
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except requests.RequestException as exc:
+            last_error = exc
+            continue
+        except ValueError as exc:
+            last_error = exc
+            continue
+
+    raise StoreLookupError(f"Store lookup request failed: {last_error}")
 
 
 def lookup_nearby_stores(
@@ -93,10 +119,6 @@ def lookup_nearby_stores(
     radius_miles: float,
     selected_brands: List[str]
 ) -> List[dict]:
-    """
-    Geocode the location, search nearby OSM store features via Overpass,
-    and return filtered branches matching the chosen brands.
-    """
     if not selected_brands:
         return []
 
@@ -113,24 +135,7 @@ def lookup_nearby_stores(
     radius_metres = miles_to_metres(radius_miles)
 
     query = build_overpass_query(user_lat, user_lon, radius_metres)
-
-    headers = {
-        "User-Agent": "GroceryShopper/1.0"
-    }
-
-    try:
-        response = requests.post(
-            OVERPASS_URL,
-            data=query,
-            headers=headers,
-            timeout=40
-        )
-        response.raise_for_status()
-        payload = response.json()
-    except requests.RequestException as exc:
-        raise StoreLookupError(f"Store lookup request failed: {exc}") from exc
-    except ValueError as exc:
-        raise StoreLookupError("Store lookup returned invalid JSON.") from exc
+    payload = fetch_overpass_payload(query)
 
     elements = payload.get("elements", [])
     store_results = []
@@ -160,10 +165,10 @@ def lookup_nearby_stores(
         if distance_miles > radius_miles:
             continue
 
-        brand = None
+        matched_brand = None
         for selected_brand in selected_brands:
             if selected_brand.lower().replace("'", "") in name.lower().replace("'", ""):
-                brand = selected_brand
+                matched_brand = selected_brand
                 break
 
         address_parts = [
@@ -178,7 +183,7 @@ def lookup_nearby_stores(
             address = "Address not available"
 
         store_results.append({
-            "store_brand": normalise_brand_name(brand or name),
+            "store_brand": normalise_brand_name(matched_brand or name),
             "branch": name,
             "address": address,
             "distance_miles": round(distance_miles, 2),
@@ -186,7 +191,6 @@ def lookup_nearby_stores(
             "lon": store_lon
         })
 
-    # Remove duplicates by brand + branch + address
     unique_results = []
     seen = set()
 
