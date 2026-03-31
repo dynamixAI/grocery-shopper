@@ -355,18 +355,20 @@ def step_3_stores() -> None:
                 st.rerun()
 
 
-def step_4_compare() -> None:
-    st.markdown("## Compare Products")
-
     if not st.session_state.comparison_results:
         if st.button("Generate product comparison", type="primary"):
-            st.session_state.comparison_results = generate_mock_product_results(
-                st.session_state.confirmed_items,
-                st.session_state.confirmed_stores
-            )
+            try:
+                st.session_state.comparison_results = build_product_results(
+                    st.session_state.confirmed_items,
+                    st.session_state.confirmed_stores
+                )
+            except ProductLookupError as exc:
+                st.error(str(exc))
+                return
+
             st.success("Product comparison results generated.")
             st.rerun()
-
+            
     if st.session_state.comparison_results:
         final_selections = {}
 
@@ -374,19 +376,26 @@ def step_4_compare() -> None:
             st.markdown(f"### {item.title()}")
 
             item_df = pd.DataFrame(item_results)
+
+            if not item_df.empty:
+                item_df["price_display"] = item_df["price"].apply(
+                    lambda x: "Price unavailable" if x == 0 else f"£{x:.2f}"
+                )
+
             display_df = item_df.rename(columns={
                 "store_brand": "Store",
                 "branch": "Branch",
                 "matched_product": "Matched Product",
-                "price": "Price (£)",
                 "pack_size": "Pack Size",
-                "offer": "Offer"
-            })[["Store", "Branch", "Matched Product", "Price (£)", "Pack Size", "Offer"]]
+                "offer": "Offer",
+                "price_display": "Price"
+            })[["Store", "Branch", "Matched Product", "Price", "Pack Size", "Offer"]]
 
             st.dataframe(display_df, use_container_width=True, hide_index=True)
 
             selection_options = [
-                f"{row['store_brand']} | {row['branch']} | {row['matched_product']} | £{row['price']:.2f} | {row['offer']}"
+                f"{row['store_brand']} | {row['branch']} | {row['matched_product']} | "
+                f"{'Price unavailable' if row['price'] == 0 else f'£{row['price']:.2f}'} | {row['offer']}"
                 for row in item_results
             ]
 
