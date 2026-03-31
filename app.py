@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import random
 
+from services.products import build_product_results, ProductLookupError
 from services.geocoding import geocode_location, GeocodingError
 from services.stores import lookup_nearby_stores, StoreLookupError
 
